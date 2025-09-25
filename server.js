@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const path = require('path');
 const bodyParser = require('body-parser');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
@@ -54,9 +55,14 @@ const adminLoginLimiter = rateLimit({
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
-// Session configuration
+// Session configuration with Azure environment check
+const sessionSecret = process.env.SESSION_SECRET || 'fallback-secret-change-immediately';
+if (!process.env.SESSION_SECRET) {
+    console.warn('⚠️ WARNING: Using fallback session secret. Set SESSION_SECRET environment variable!');
+}
+
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'fallback-secret-change-immediately',
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -80,23 +86,86 @@ app.get('/favicon.ico', (req, res) => {
     res.status(204).end(); // No content response
 });
 
-// Database setup - Azure App Service compatible
-const fs = require('fs');
-const dbDir = process.env.DB_PATH ? path.dirname(process.env.DB_PATH) : './data';
-const dbPath = process.env.DB_PATH || './data/tickets.db';
-
-// Ensure database directory exists (Azure App Service)
-if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
-}
-
-const db = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-        console.error('Database connection error:', err);
+// Health check endpoint for Azure diagnostics
+app.get('/health', (req, res) => {
+    const healthCheck = {
+        status: 'OK',
+        timestamp: new Date().toISOString(),
+        environment: {
+            NODE_ENV: process.env.NODE_ENV || 'undefined',
+            PORT: process.env.PORT || 'undefined',
+            WEBSITES_PORT: process.env.WEBSITES_PORT || 'undefined',
+            WEBSITE_SITE_NAME: process.env.WEBSITE_SITE_NAME || 'undefined',
+            DB_PATH: process.env.DB_PATH || 'undefined'
+        },
+        database: {
+            path: dbPath || 'not initialized',
+            accessible: false
+        }
+    };
+    
+    // Test database connection
+    if (db) {
+        db.get("SELECT 1", (err, row) => {
+            if (err) {
+                healthCheck.database.accessible = false;
+                healthCheck.database.error = err.message;
+            } else {
+                healthCheck.database.accessible = true;
+            }
+            res.json(healthCheck);
+        });
     } else {
-        console.log('✅ Connected to SQLite database at:', dbPath);
+        healthCheck.database.error = 'Database not initialized';
+        res.json(healthCheck);
     }
 });
+
+// Database setup - Azure App Service compatible
+// Azure-specific database path handling
+let dbPath;
+let dbDir;
+
+if (process.env.WEBSITE_SITE_NAME) {
+    // Running on Azure App Service
+    dbPath = process.env.DB_PATH || '/home/data/tickets.db';
+    dbDir = path.dirname(dbPath);
+    console.log('🌐 Running on Azure App Service');
+} else {
+    // Running locally
+    dbPath = process.env.DB_PATH || './data/tickets.db';
+    dbDir = path.dirname(dbPath);
+    console.log('💻 Running locally');
+}
+
+console.log('📁 Database path:', dbPath);
+console.log('📁 Database directory:', dbDir);
+
+// Ensure database directory exists
+try {
+    if (!fs.existsSync(dbDir)) {
+        fs.mkdirSync(dbDir, { recursive: true });
+        console.log('📁 Created database directory:', dbDir);
+    }
+} catch (error) {
+    console.error('❌ Error creating database directory:', error);
+}
+
+// Initialize database with error handling
+let db;
+try {
+    db = new sqlite3.Database(dbPath, (err) => {
+        if (err) {
+            console.error('❌ Database connection error:', err);
+            console.error('📍 Attempted path:', dbPath);
+        } else {
+            console.log('✅ Connected to SQLite database at:', dbPath);
+        }
+    });
+} catch (error) {
+    console.error('❌ Critical database error:', error);
+    process.exit(1);
+}
 
 // Initialize database tables with enhanced schema
 db.serialize(() => {

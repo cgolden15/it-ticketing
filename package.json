@@ -2,9 +2,9 @@
   "name": "it-ticketing-system",
   "version": "1.0.0",
   "description": "A secure IT ticketing application",
-  "main": "server.js",
+  "main": "app.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node app.js",
     "dev": "nodemon server.js",
     "build": "echo 'No build step required'",
     "postinstall": "node upgrade-db.js"
