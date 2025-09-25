@@ -109,3 +109,6 @@ $RECYCLE.BIN/
 *.bak
 *.backup
 setup-db.js
+
+# Azure specific
+.azure/

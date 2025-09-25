@@ -1,0 +1,21 @@
+# Azure App Service Deployment Configuration
+
+# Build configuration
+SCM_DO_BUILD_DURING_DEPLOYMENT=true
+ENABLE_ORYX_BUILD=true
+SCM_BUILD_ARGS=--platform nodejs --platform-version 18
+
+# Node.js specific settings
+WEBSITE_NODE_DEFAULT_VERSION=18.18.0
+WEBSITE_NPM_DEFAULT_VERSION=8.19.2
+
+# Application settings
+NODE_ENV=production
+WEBSITE_RUN_FROM_PACKAGE=1
+
+# Custom deployment script
+POST_DEPLOYMENT_ACTION=node upgrade-db.js
+
+# Logging
+WEBSITES_ENABLE_APP_SERVICE_STORAGE=true
+WEBSITE_HTTPLOGGING_RETENTION_DAYS=3

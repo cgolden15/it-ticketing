@@ -9,20 +9,30 @@ const bodyParser = require('body-parser');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 80;
+const PORT = process.env.PORT || process.env.WEBSITES_PORT || 8080;
 
-// Security middleware - TEMPORARILY DISABLED for network troubleshooting
-// app.use(helmet({
-//     contentSecurityPolicy: false,
-//     crossOriginOpenerPolicy: false,
-//     crossOriginResourcePolicy: false,
-//     crossOriginEmbedderPolicy: false,
-//     originAgentCluster: false,
-//     hsts: false,
-//     noSniff: false,
-//     frameguard: false,
-//     xssFilter: false,
-// }));
+// Security middleware - Configured for Azure App Service
+const isProduction = process.env.NODE_ENV === 'production';
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", "data:", "https:"],
+            connectSrc: ["'self'"],
+            fontSrc: ["'self'"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"],
+        },
+    },
+    crossOriginOpenerPolicy: !isProduction ? false : { policy: "same-origin" },
+    crossOriginResourcePolicy: !isProduction ? false : { policy: "same-origin" },
+    crossOriginEmbedderPolicy: false,
+    originAgentCluster: false,
+    hsts: isProduction,
+}));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -70,9 +80,23 @@ app.get('/favicon.ico', (req, res) => {
     res.status(204).end(); // No content response
 });
 
-// Database setup
+// Database setup - Azure App Service compatible
+const fs = require('fs');
+const dbDir = process.env.DB_PATH ? path.dirname(process.env.DB_PATH) : './data';
 const dbPath = process.env.DB_PATH || './data/tickets.db';
-const db = new sqlite3.Database(dbPath);
+
+// Ensure database directory exists (Azure App Service)
+if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+}
+
+const db = new sqlite3.Database(dbPath, (err) => {
+    if (err) {
+        console.error('Database connection error:', err);
+    } else {
+        console.log('✅ Connected to SQLite database at:', dbPath);
+    }
+});
 
 // Initialize database tables with enhanced schema
 db.serialize(() => {
